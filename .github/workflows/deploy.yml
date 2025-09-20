@@ -1,0 +1,99 @@
+# Name of your GitHub Actions Workflow
+name: Deploy MERN App to AWS
+
+# Controls when the action will run. 
+# This workflow runs on any push to the 'main' or 'master' branch.
+on:
+  push:
+    branches:
+      - main
+      - master
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This job handles the frontend deployment to S3
+  deploy-frontend:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+    
+    # Define the working directory for this job
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Step 1: Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Configure AWS credentials using secrets
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 3: Set up Node.js for the build process
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Specify your Node.js version
+
+      # Step 4: Install frontend dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Step 5: Create the .env.production file needed for the build
+      - name: Create Environment File
+        run: echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env.production
+
+      # Step 6: Build the React application
+      - name: Build React App
+        run: npm run build
+
+      # Step 7: Deploy the built files to the S3 bucket
+      - name: Deploy to S3
+        run: aws s3 sync ./dist s3://${{ secrets.S3_BUCKET_NAME }} --delete
+
+
+  # This job handles the backend deployment to Elastic Beanstalk
+  deploy-backend:
+    # This job will only run after 'deploy-frontend' has successfully completed
+    needs: deploy-frontend
+    runs-on: ubuntu-latest
+
+    # Define the working directory for this job
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      # Step 1: Checks-out your repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Configure AWS credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 3: Create the deployment ZIP file
+      - name: Create ZIP Deployment Package
+        run: zip -r deploy.zip . -x "node_modules/*"
+
+      # Step 4: Deploy the ZIP file to Elastic Beanstalk
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v21
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ secrets.BEANSTALK_APP_NAME }}
+          environment_name: ${{ secrets.BEANSTALK_ENV_NAME }}
+          version_label: "v${{ github.run_number }}"
+          region: ${{ secrets.AWS_REGION }}
+          deployment_package: backend/deploy.zip
