@@ -1,10 +1,12 @@
 import axios from "axios";
 
-// in production, there's no localhost so we have to make this dynamic
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001/api" : "/api";
+// Use the Vite environment variable to get the absolute URL for the production API.
+// This variable will be injected during the `npm run build` process.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  // Append '/api' to the base URL here, which is a cleaner separation of concerns.
+  baseURL: `${BASE_URL}/api`, 
 });
 
 export default api;
